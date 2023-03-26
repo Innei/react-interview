@@ -1,7 +1,11 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Combobox, Dialog, Transition } from '@headlessui/react'
 import { RepositoryOption } from './RepositoryOption'
 import { FaceSmileIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
+import { useQuery } from '@tanstack/react-query'
+import styles from './index.module.css'
+
+const clsx = (...args: any[]) => args.filter(Boolean).join(' ')
 
 type Repository = {
   id: string
@@ -33,6 +37,28 @@ export default function Example() {
 
   const [rawQuery, setRawQuery] = React.useState('')
   const query = rawQuery.toLowerCase().replace(/^[#>]/, '')
+
+  const setRawQueryOnceRef = useRef(false)
+
+  if ('location' in globalThis && !setRawQueryOnceRef.current) {
+    if (location.hash) {
+      setRawQuery(location.hash.replace(/^#/, ''))
+    }
+    setRawQueryOnceRef.current = true
+  }
+
+  useEffect(() => {
+    location.hash = query
+  }, [query])
+
+  const { data, isLoading, isInitialLoading } = useQuery<APIResponse>(
+    ['search', query],
+    async ({ queryKey }) => {
+      const [, query] = queryKey
+      if (!query) return null
+      return fetch(`/api/search?q=${query}`).then((res) => res.json())
+    }
+  )
 
   return (
     <Transition.Root
@@ -67,8 +93,8 @@ export default function Example() {
             <Dialog.Panel className="mx-auto max-w-xl transform divide-y divide-gray-500 divide-opacity-20 overflow-hidden rounded-2xl shadow-slate-300/10 bg-slate-900/70 shadow-2xl ring-1 ring-sky-500 ring-opacity-5 backdrop-blur-xl backdrop-filter transition-all">
               <Combobox
                 value=""
-                onChange={(item) => {
-                  console.info('You have selected', item)
+                onChange={(fullName) => {
+                  window.open(`https://github.com/` + fullName, '_blank')
                 }}
               >
                 <div className="relative">
@@ -79,24 +105,48 @@ export default function Example() {
                   <Combobox.Input
                     className="h-12 w-full border-0 bg-transparent pl-11 pr-4 text-gray-100 placeholder-gray-500 focus:ring-0 sm:text-sm focus:outline-0"
                     placeholder="Search GitHub repos..."
+                    value={rawQuery}
                     onChange={(event) => setRawQuery(event.target.value)}
                   />
                 </div>
 
+                <div
+                  className={clsx(
+                    styles['status-bar'],
+                    isLoading && styles['loading']
+                  )}
+                />
+
                 <Combobox.Options
                   static
-                  className="max-h-80 scroll-py-10 scroll-pb-2 space-y-4 overflow-y-auto p-4 pb-2"
+                  className="max-h-80 scroll-py-10 scroll-pb-2 space-y-4 overflow-y-auto p-4 pb-2 min-h-[400px] overflow-auto"
                 >
-                  <li>
-                    <h2 className="text-xs font-semibold text-gray-200">
-                      Repositories
-                    </h2>
-                    <ul className="-mx-4 mt-2 text-sm text-gray-700 space-y-0.5">
-                      <RepositoryOption />
-                      <RepositoryOption />
-                      <RepositoryOption />
-                    </ul>
-                  </li>
+                  {data && (
+                    <li>
+                      <h2 className="text-xs font-semibold text-gray-200">
+                        Repositories
+                      </h2>
+                      <ul className="-mx-4 mt-2 text-sm text-gray-700 space-y-0.5">
+                        {data.items.map((item) => (
+                          <RepositoryOption
+                            fullName={item.full_name}
+                            key={item.id}
+                            avatar={item.owner.avatar_url}
+                            fork={item.forks_count}
+                            issue={item.open_issues_count}
+                            language={item.language}
+                            repoName={
+                              item.owner.login === item.full_name.split('/')[0]
+                                ? item.name
+                                : item.full_name
+                            }
+                            star={item.stargazers_count}
+                            username={item.owner.login}
+                          />
+                        ))}
+                      </ul>
+                    </li>
+                  )}
                 </Combobox.Options>
                 <span className="flex flex-wrap items-center bg-slate-900/20 py-2.5 px-4 text-xs text-gray-400">
                   <FaceSmileIcon className="w-4 h-4 mr-1" />
